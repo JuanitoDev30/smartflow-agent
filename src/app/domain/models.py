@@ -102,5 +102,115 @@ class Product(BaseModel):
     unit_price: Decimal
     stock: int
     status: ProductStatus = ProductStatus.ACTIVE
+    
+    @property
+    def sellable(self) -> bool:
+        """Indica si el producto se puede vender"""
+        return self.status.sellable and self.stock > 0
+      
+      
+    @property
+    def availability_note(self) -> str | None:
+      """Aviso de escases, para que el agente pueda mencionarlo sin inverntarlo"""  
+      if self.status == ProductStatus.LOW_STOCK:
+          return "Quedan pocas unidades"
+      return None  
    
-   
+class Customer(BaseModel):
+  """Datos del cliente"""
+  id: str | None = None
+  full_name: str | None = None
+  phone: str | None = None
+  email: str | None = None
+  default_address: str | None = None
+  
+  def normalized_phone(self) -> str | None:
+      """Devuelve el teléfono normalizado a 10 dígitos"""
+      return normalize_phone(self.phone)
+    
+    
+class OrderLine(BaseModel):
+    """Línea de pedido"""
+    product_id: str
+    name: str
+    quantity: int = Field(gt=0)
+    unit_price: Decimal
+    
+    @property
+    def subtotal(self) -> Decimal:
+        """Crea una línea de pedido a partir de un producto y una cantidad"""
+        return self.unit_price * self.quantity
+    
+class DraftOrder(BaseModel):
+    """Pedido en construccion. Solo se envia al backend cuando el cliente confirma la compra"""
+    
+    lines: list[OrderLine] = Field(default_factory=list)
+    delivery_address: str | None = None
+    payment_method: PaymentMethod | None = None
+    notes: str | None = None
+    #None = todavia no se le pregunto al cliente
+    save_address_as_default: bool | None = None
+    placed_order_id: str | None = None  # ID del pedido confirmado, si ya se ha confirmado
+    
+    @property
+    def is_empty(self) -> bool:
+        """Indica si el pedido está vacío"""
+        return not self.lines
+    
+    
+    def find(self, product_id: str) -> OrderLine | None: 
+        return next((line for line in self.lines if line.product_id == product_id), None)
+    
+    def upsert(self, line: OrderLine) -> None:
+        """Agrega o actualiza una linea de pedido"""
+        existing_line = self.find(line.product_id)
+        if existing_line is None:
+            self.lines.append(line)
+        else:
+            existing_line.quantity = line.quantity
+            existing_line.unit_price = line.unit_price
+            
+            
+    def remove(self, product_id: str) -> bool:
+        """Elimina una línea de pedido. Devuelve True si se eliminó, False si no existía"""
+        before = len(self.lines)
+        self.lines = [line for line in self.lines if line.product_id != product_id]
+        return len(self.lines) != before
+    
+    def missing_fields(self, customer: Customer) -> list[str]:
+        """Que falta para poder registrar el pedido, en lenguaje para el cliente"""
+        missing: list[str] = []
+        if not customer.full_name:
+            missing.append("nombre completo")
+        if not is_valid_phone(customer.phone):
+            missing.append(f"teléfono de  {PHONE_DIGITS} dígitos")
+            
+        if not self.delivery_address:
+            missing.append("dirección de entrega")
+        if self.payment_method is None:
+            missing.append("método de pago (EFECTIVO, TARJETA o TRANSFERENCIA)")
+        if self.save_address_as_default is None:
+            missing.append("confirmar si desea guardar la dirección como predeterminada")
+        return missing
+    
+    
+class Order(BaseModel):
+    """Pedido tal como existe en el sistema de pedidos"""
+    
+    id: str
+    status: OrderStatus
+    customer_id: str | None = None
+    lines: list[OrderLine]
+    total: Decimal
+    delivery_address: str | None = None
+    payment_method: PaymentMethod | None = None
+    notes: str | None = None
+    created_at: datetime
+    updated_at: datetime | None = None
+    
+    @property
+    def short_code(self) -> str:
+        """Devuelve los primeros 6 caracteres del ID del pedido, para mostrar al cliente"""
+        return self.id[6:]
+            
+            
