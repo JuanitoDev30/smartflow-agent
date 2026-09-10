@@ -33,5 +33,15 @@ class OrderRepository(Protocol):
   async def update_delivery_address(self, order_id: str, address: str) -> Order: ...
   
 class CustomerRepository(Protocol):
+  """Gestion de clientes"""
+  async def find_by_phone(self, phone:str) -> Customer | None: ...
   
+  async def find_or_create(
+    self, 
+    full_name:str,
+    phone:str,
+    email:str | None = None,
+    default_address:str | None = None
+  ) -> Customer: ...
   
+  async def update(self, customer_id:str, changes: dict[str, str | None]) -> Customer: ...
