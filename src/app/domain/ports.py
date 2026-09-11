@@ -5,8 +5,6 @@ Se usa Protocol en vez de clases bases abstractas, para que un adaptador no teng
 El puerto conversacional no vive aqui. Guarda mensajes del LLM que es un concepto alejado al dominio
 """
 
-
-
 from typing import Protocol
 
 from app.domain.models import Category, Product, Order, PaymentMethod, Customer
